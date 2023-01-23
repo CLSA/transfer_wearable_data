@@ -161,9 +161,9 @@ function usage()
   printf(
     "transfer.php version %s\n".
     "Usage: php transfer.php [OPTION]\n".
-    "-d  Outputs the script's command without executing them\n",
+    "-d  Outputs the script's command without executing them\n".
     "-h  Displays this usage message\n".
-    "-t  The data type to transfer: actigraph or ticwatch\n".
+    "-t  The data type to transfer: actigraph or ticwatch\n",
     VERSION
   );
 }
@@ -193,7 +193,7 @@ function parse_arguments( $arguments )
       // add an argument to the new option
       $arg = trim( $arg, "\"' \t" );
       $operation_index = count( $operation_list )-1;
-      if( array_key_exists( 'argument', $operation_list[$operation_index] ) )
+      if( -1 == $operation_index || array_key_exists( 'argument', $operation_list[$operation_index] ) )
       {
         // lone arguments are not allowed
         printf( 'Unexpected argument "%s"%s', $arg, "\n\n" );
