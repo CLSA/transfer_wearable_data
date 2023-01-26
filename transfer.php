@@ -26,6 +26,7 @@ function rsync( $local_path, $remote_path, $port = NULL, $timeout = 10 )
   $files = 0;
   if( is_dir( $local_path ) )
   {
+    $output = NULL;
     $command = exec( sprintf( 'find %s -type f | wc -l 2> /dev/null', $local_path ), $output );
     $files = intval( current( $output ) );
   }
@@ -51,6 +52,7 @@ function rsync( $local_path, $remote_path, $port = NULL, $timeout = 10 )
     }
     else
     {
+      $output = NULL;
       exec( sprintf( '%s 2> /dev/null', $command ), $output, $result_code );
     }
 
@@ -119,6 +121,7 @@ function archive( $path )
   }
   else
   {
+    $output = NULL;
     exec( sprintf( '%s', $command ), $output, $result_code );
   }
 
@@ -144,6 +147,7 @@ function archive( $path )
   }
   else
   {
+    $output = NULL;
     exec( sprintf( '%s 2> /dev/null', $command ), $output, $result_code );
   }
 
