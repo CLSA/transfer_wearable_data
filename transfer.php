@@ -1,25 +1,34 @@
 <?php
+/**
+ * transfer.php
+ * 
+ * A script to transfer wearable data from local machines to the data repository (NFS server)
+ * author: Patrick Emond <emondpd@mcmaster.ca>
+ */
+
 set_time_limit( 7200 ); // two hours
 error_reporting( E_ALL | E_STRICT );
+require_once( 'arguments.class.php' );
+
 define( 'VERSION', '1.0' );
 
-// data type paths
-define( 'PATHS', [
-  'actigraph' => [
-    'local' => 'data/actigraph/',
-    'remote' => '130.113.54.124:/home/patrick/HAM/actigraph/'
-  ],
-  'ticwatch' => [
-    'local' => 'data/ticwatch/',
-    'remote' => '130.113.54.124:/home/patrick/HAM/ticwatch/'
-  ],
-] );
-
+/**
+ * Prints datetime-indexed messages to stdout
+ * @param string $message
+ */
 function out( $message )
 {
   if( !DEBUG ) printf( "%s: %s\n", date( 'Y-m-d H:i:s' ), $message );
 }
 
+/**
+ * Transfers files to the remote server, returning true when successful and false when not.
+ * @param string $local_path The source folder
+ * @param string $remote_path The destination folder (IP:/path)
+ * @param integer $port The SSH port of the remote server
+ * @param integer $timeout How many seconds before giving up on the SSH connection
+ * @return boolean
+ */
 function rsync( $local_path, $remote_path, $port = NULL, $timeout = 10 )
 {
   // count the number of files in the local path
@@ -46,15 +55,8 @@ function rsync( $local_path, $remote_path, $port = NULL, $timeout = 10 )
     );
 
     $result_code = 0;
-    if( DEBUG )
-    {
-      printf( "%s\n", $command );
-    }
-    else
-    {
-      $output = NULL;
-      exec( sprintf( '%s 2> /dev/null', $command ), $output, $result_code );
-    }
+    $output = NULL;
+    DEBUG ? printf( "%s\n", $command ) : exec( sprintf( '%s 2> /dev/null', $command ), $output, $result_code );
 
     if( 0 < $result_code )
     {
@@ -89,6 +91,11 @@ function rsync( $local_path, $remote_path, $port = NULL, $timeout = 10 )
   return 0 < $files;
 }
 
+/**
+ * Archives the files found in the given path
+ * @param string $path The local path to archive
+ * @return boolean
+ */
 function archive( $path )
 {
   $current_dir = getcwd();
@@ -99,34 +106,19 @@ function archive( $path )
   $parent_dir = str_replace( sprintf( '/%s', $child_dir ), '', $path );
 
   // move into the parent directory
-  chdir( $parent_dir );
+  DEBUG ? printf( "cd %s\n", $parent_dir ) : chdir( $parent_dir );
 
-  $filename = sprintf(
-    '%s.%s.zip',
-    $child_dir,
-    date( 'Y-m-d' )
-  );
+  $filename = sprintf( '%s.%s.zip', $child_dir, date( 'Y-m-d' ) );
 
   // zip all the files in the child directory
-  $command = sprintf(
-    'zip -r %s %s',
-    $filename,
-    $child_dir
-  );
+  $command = sprintf( 'zip -r %s %s', $filename, $child_dir );
 
   $result_code = 0;
-  if( DEBUG )
-  {
-    printf( "%s\n", $command );
-  }
-  else
-  {
-    $output = NULL;
-    exec( sprintf( '%s', $command ), $output, $result_code );
-  }
+  $output = NULL;
+  DEBUG ? printf( "%s\n", $command ) : exec( sprintf( '%s', $command ), $output, $result_code );
 
   // move back into the original directory
-  chdir( $current_dir );
+  DEBUG ? printf( "cd %s\n", $current_dir ) : chdir( $current_dir );
 
   if( 0 < $result_code )
   {
@@ -135,21 +127,11 @@ function archive( $path )
   }
 
   // now that they are archived, delete all files in the path
-  $command = sprintf(
-    'rm -rf %s',
-    $path
-  );
+  $command = sprintf( 'rm -rf %s*', $path );
 
   $result_code = 0;
-  if( DEBUG )
-  {
-    printf( "%s\n", $command );
-  }
-  else
-  {
-    $output = NULL;
-    exec( sprintf( '%s 2> /dev/null', $command ), $output, $result_code );
-  }
+  $output = NULL;
+  DEBUG ? printf( "%s\n", $command ) : exec( sprintf( '%s 2> /dev/null', $command ), $output, $result_code );
 
   if( 0 < $result_code )
   {
@@ -160,118 +142,93 @@ function archive( $path )
   return true;
 }
 
-function usage()
+/**
+ * Purges all archived files for the given path that are older than $days_old
+ * @param string $path The local path that archives are created from
+ * @param integer $days_old The number of days before an archived file is deleted
+ * @return boolean
+ */
+function purge( $path, $days_old )
 {
-  printf(
-    "transfer.php version %s\n".
-    "Usage: php transfer.php [OPTION]\n".
-    "-d  Outputs the script's command without executing them\n".
-    "-h  Displays this usage message\n".
-    "-t  The data type to transfer: actigraph or ticwatch\n",
-    VERSION
-  );
+  // delete all files older than the input argument
+  $zip_glob = preg_replace( '#/$#', '.[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].zip', $path );
+  $command = sprintf( 'find %s -mtime +%d -exec rm {} \;', $zip_glob, $days_old );
+
+  $result_code = 0;
+  $output = NULL;
+  DEBUG ? printf( "%s\n", $command ) : exec( sprintf( '%s 2> /dev/null', $command ), $output, $result_code );
+
+  if( 0 < $result_code )
+  {
+    out( sprintf( 'Unable to remove files in "%s", received error code "%d".', $path, $result_code ) );
+    return false;
+  }
+
+  out( sprintf( 'Deleted all archived files older than %d days', $days_old ) );
+
+  return true;
 }
 
-function parse_arguments( $arguments )
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// build the command argument details, then parse the passed args
+$arguments = new arguments;
+$arguments->set_version( VERSION );
+$arguments->set_description(
+  "A script that will attempt to transfer wearable data files from a local to a remote directory.\n".
+  "If the transfer fails it can be run again, once successful local files will be archived."
+);
+$arguments->add_option( 'd', 'debug', 'Outputs the script\'s commands without executing them' );
+$arguments->add_option(
+  'p',
+  'port',
+  'The port to use when connecting to the remote server',
+  true,
+  22
+);
+$arguments->add_option(
+  'r',
+  'remove',
+  'Permanently delete archived files after they are ARGUMENT days old',
+  true
+);
+$arguments->add_option(
+  't',
+  'timeout',
+  'How long to wait before giving up on a remote connection',
+  true,
+  10
+);
+$arguments->add_input( 'LOCAL_DIRECTORY', 'The local directory containing files for transfer' );
+$arguments->add_input(
+  'REMOTE_DIRECTORY',
+  'The remote directory to transfer files into (ex: 1.1.1.1:/data/temporary/HAM/actigraph)'
+);
+
+$args = $arguments->parse_arguments( $argv );
+
+define( 'DEBUG', array_key_exists( 'debug', $args['option_list'] ) );
+$port = $args['option_list']['port'];
+$timeout = $args['option_list']['timeout'];
+$purge_days_old = array_key_exists( 'remove', $args['option_list'] ) ? $args['option_list']['remove'] : NULL;
+$local_dir = $args['input_list']['LOCAL_DIRECTORY'];
+if( '/' != $local_dir[strlen( $local_dir )-1] ) $local_dir .= '/';
+$remote_dir = $args['input_list']['REMOTE_DIRECTORY'];
+if( '/' != $remote_dir[strlen( $remote_dir )-1] ) $remote_dir .= '/';
+
+// sanitize the purge days old parameter (must be an integer >= 0)
+if( !( (string)(int)$purge_days_old === (string)$purge_days_old ) || 0 > $purge_days_old )
 {
-  $operation_list = [];
-  foreach( $arguments as $index => $arg )
-  {
-    if( 0 == $index ) continue; // ignore the script name
-    if( '-' == $arg[0] )
-    {
-      $option = substr( $arg, 1 );
-      // check that the option is valid
-      if( !in_array( $option, ['d', 'h', 't'] ) )
-      {
-        printf( 'Invalid operation "%s"%s', $arg, "\n\n" );
-        usage();
-        die();
-      }
-
-      // add a new option
-      $operation_list[] = [ 'option' => $option ];
-    }
-    else
-    {
-      // add an argument to the new option
-      $arg = trim( $arg, "\"' \t" );
-      $operation_index = count( $operation_list )-1;
-      if( -1 == $operation_index || array_key_exists( 'argument', $operation_list[$operation_index] ) )
-      {
-        // lone arguments are not allowed
-        printf( 'Unexpected argument "%s"%s', $arg, "\n\n" );
-        usage();
-        die();
-      }
-      else if( in_array( $operation_list[$operation_index]['option'], ['d', 'h'] ) )
-      {
-        // some options should not have any arguments
-        printf(
-          'Argument "%s" not expected after option "%s"%s',
-          $arg,
-          $operation_list[$operation_index]['option'],
-          "\n\n"
-        );
-        usage();
-        die();
-      }
-
-      $operation_list[$operation_index]['argument'] = $arg;
-    }
-  }
-
-  $settings = [
-    'DEBUG' => false,
-    'DATA_TYPE' => NULL
-  ];
-  foreach( $operation_list as $op )
-  {
-    $option = $op['option'];
-    $argument = array_key_exists( 'argument', $op ) ? $op['argument'] : NULL;
-
-    if( 'd' == $option )
-    {
-      $settings['DEBUG'] = true;
-    }
-    else if( 'h' == $option )
-    {
-      usage();
-      die();
-    }
-    else if( 't' == $option )
-    {
-      if( !in_array( $argument, ['actigraph', 'ticwatch'] ) )
-      {
-        printf(
-          'Operation "-%s" expects one of the following data types as an argument: actigraph, ticwatch%s',
-          $option,
-          "\n\n"
-        );
-        usage();
-        die();
-      }
-      $settings['DATA_TYPE'] = $argument;
-    }
-  }
-
-  // make sure the path was specified
-  if( is_null( $settings['DATA_TYPE'] ) )
-  {
-    printf( "No data type specified\n\n" );
-    usage();
-    die();
-  }
-
-  return $settings;
+  printf( "Option to remove files, \"%s\", is invalid\n", $purge_days_old );
+  $arguments->usage();
+  exit( 1 );
 }
 
-// parse the input arguments
-foreach( parse_arguments( $argv ) as $setting => $value ) define( $setting, $value );
-
-out( sprintf( 'Transfering %s files', DATA_TYPE ) );
-if( rsync( PATHS[DATA_TYPE]['local'], PATHS[DATA_TYPE]['remote'], 524 ) )
+out( sprintf( 'Transfering files from "%s"', $local_dir ) );
+if( rsync( $local_dir, $remote_dir, $port, $timeout ) )
 {
   // the rsync was successful so archive the data
-  archive( PATHS[DATA_TYPE]['local'] );
+  archive( $local_dir );
 }
+
+if( !is_null( $purge_days_old ) ) purge( $local_dir, $purge_days_old );
