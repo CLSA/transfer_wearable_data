@@ -217,8 +217,10 @@ $remote_dir = $args['input_list']['REMOTE_DIRECTORY'];
 if( '/' != $remote_dir[strlen( $remote_dir )-1] ) $remote_dir .= '/';
 
 // sanitize the purge days old parameter (must be an integer >= 0)
-if( !( (string)(int)$purge_days_old === (string)$purge_days_old ) || 0 > $purge_days_old )
-{
+if( !is_null( $purge_days_old ) && (
+ !( (string)(int)$purge_days_old === (string)$purge_days_old ) ||
+ 0 > $purge_days_old
+) ) {
   printf( "Option to remove files, \"%s\", is invalid\n", $purge_days_old );
   $arguments->usage();
   exit( 1 );
