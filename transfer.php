@@ -2,7 +2,7 @@
 /**
  * transfer.php
  * 
- * A script to transfer wearable data from local machines to the data repository (NFS server)
+ * A script to transfer collected data from local machines to the data repository (NFS server)
  * author: Patrick Emond <emondpd@mcmaster.ca>
  */
 
@@ -175,7 +175,7 @@ function purge( $path, $days_old )
 $arguments = new arguments;
 $arguments->set_version( VERSION );
 $arguments->set_description(
-  "A script that will attempt to transfer wearable data files from a local to a remote directory.\n".
+  "A script that will attempt to transfer collected data files from a local to a remote directory.\n".
   "If the transfer fails it can be run again, once successful local files will be archived."
 );
 $arguments->add_option( 'd', 'debug', 'Outputs the script\'s commands without executing them' );
